@@ -1,0 +1,6 @@
+# User data — never publish personal progress
+settings.json
+settings.json.tmp
+
+# Runtime-generated AutoHotkey scripts
+ahk/

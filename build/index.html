@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+	<title>Geometry Dash</title>
+	<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+	<link rel="stylesheet" href="assets/style.css">
+
+	<script src="coherent.js"></script>
+	<script src="assets/scripts/libs/polyfills.js"></script>
+	<script>
+		if (typeof _tera_client_proxy_ !== 'undefined') {
+			_tera_client_proxy_.resize_to(1281, 721);
+		}
+	</script>
+	<script src="settings.js"></script>
+	<script>
+		// Persistent localStorage shim — syncs to backend settings.json
+		// Port changes on every mod reload, so native localStorage is lost each time.
+		// settings.js sets window._gdSettings with saved data (loaded as regular script, no XHR).
+		(function() {
+			// Populate localStorage from saved settings
+			if (window._gdSettings) {
+				var keys = Object.keys(window._gdSettings);
+				for (var i = 0; i < keys.length; i++) {
+					try { localStorage.setItem(keys[i], window._gdSettings[keys[i]]); } catch(e) {}
+				}
+			}
+
+			// Batched writes — coalesce rapid setItem/removeItem into one POST per ~100ms
+			// so we don't race XHRs (browser doesn't guarantee completion order).
+			var _pendingWrites = null;
+			var _pendingTimer = null;
+			function flushPending() {
+				_pendingTimer = null;
+				if (!_pendingWrites) return;
+				var payload = _pendingWrites;
+				_pendingWrites = null;
+				try {
+					var xhr2 = new XMLHttpRequest();
+					xhr2.open('POST', '/settings', true);
+					xhr2.setRequestHeader('Content-Type', 'application/json');
+					xhr2.send(JSON.stringify(payload));
+				} catch(e) {}
+			}
+			function queueWrite(key, value) {
+				if (!_pendingWrites) _pendingWrites = {};
+				_pendingWrites[key] = value;
+				if (!_pendingTimer) _pendingTimer = setTimeout(flushPending, 100);
+			}
+
+			var _origSetItem = localStorage.setItem.bind(localStorage);
+			localStorage.setItem = function(key, value) {
+				_origSetItem(key, value);
+				queueWrite(key, String(value));
+			};
+
+			var _origRemoveItem = localStorage.removeItem.bind(localStorage);
+			localStorage.removeItem = function(key) {
+				_origRemoveItem(key);
+				queueWrite(key, null);
+			};
+
+			// Patch clear() so wipe is also persisted to backend
+			var _origClear = localStorage.clear.bind(localStorage);
+			localStorage.clear = function() {
+				try {
+					var allKeys = [];
+					for (var i = 0; i < localStorage.length; i++) {
+						var k = localStorage.key(i);
+						if (k) allKeys.push(k);
+					}
+					_origClear();
+					if (!_pendingWrites) _pendingWrites = {};
+					for (var j = 0; j < allKeys.length; j++) _pendingWrites[allKeys[j]] = null;
+					if (!_pendingTimer) _pendingTimer = setTimeout(flushPending, 100);
+				} catch(e) { _origClear(); }
+			};
+
+			// Flush on unload so latest changes hit disk
+			window.addEventListener('beforeunload', flushPending);
+		})();
+	</script>
+	<script>
+		// Bounded error overlay — caps at 50 messages, dedupes consecutive identicals
+		(function() {
+			var maxMessages = 50;
+			var messages = [];
+			var lastMsg = null;
+			var lastCount = 0;
+			var overlay = null;
+			function ensureOverlay() {
+				if (overlay) return overlay;
+				overlay = document.createElement('div');
+				overlay.id = '_err';
+				overlay.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#000;color:#0f0;font:11px monospace;padding:2px;max-height:30%;overflow:auto;pointer-events:none;';
+				document.documentElement.appendChild(overlay);
+				return overlay;
+			}
+			function render() {
+				var d = ensureOverlay();
+				d.textContent = '';
+				for (var i = 0; i < messages.length; i++) {
+					var line = document.createElement('div');
+					line.textContent = messages[i];
+					d.appendChild(line);
+				}
+				d.scrollTop = d.scrollHeight;
+			}
+			window.onerror = function(msg, url, line, col) {
+				var formatted = msg + ' @ ' + (url||'').split('/').pop() + ':' + line;
+				if (formatted === lastMsg) {
+					lastCount++;
+					messages[messages.length - 1] = formatted + ' (×' + (lastCount + 1) + ')';
+				} else {
+					lastMsg = formatted;
+					lastCount = 0;
+					messages.push(formatted);
+					if (messages.length > maxMessages) { messages.shift(); lastMsg = null; }
+				}
+				render();
+				return true;
+			};
+		})();
+	</script>
+
+	<script src="assets/scripts/game/allObjects.js?latest"></script>
+	<script src="assets/scripts/game/allLevels.js"></script>
+	<script src="assets/scripts/libs/phaser.min.js"></script>
+	<script src="assets/scripts/libs/pako.min.js"></script>
+	<script src="assets/scripts/utils/cache-manager.js"></script>
+	<script>window._gdProxyUrl = "";</script>
+	<script defer src="assets/scripts/utils/config.js"></script>
+	<script defer src="assets/scripts/core/triggers.js"></script>
+	<script defer src="assets/scripts/core/level.js?latest"></script>
+	<script defer src="assets/scripts/core/player.js"></script>
+	<script defer src="assets/scripts/core/audio.js"></script>
+	<script defer src="assets/scripts/core/loading-screen.js"></script>
+	<script defer src="assets/scripts/core/game-scene.js?latest"></script>
+	<script defer src="assets/scripts/core/main.js"></script>
+	<script>
+		// Resize handling — try native resize event first; fall back to polling at 1s
+		// (Coherent GT supports addEventListener('resize') in most versions)
+		(function() {
+			var lastW = document.documentElement.clientWidth;
+			var lastH = document.documentElement.clientHeight;
+			var sawNativeResize = false;
+			window.addEventListener('resize', function() { sawNativeResize = true; });
+			setInterval(function() {
+				if (sawNativeResize) return; // native event works, skip polling
+				var w = document.documentElement.clientWidth;
+				var h = document.documentElement.clientHeight;
+				if (w !== lastW || h !== lastH) {
+					lastW = w; lastH = h;
+					var evt = document.createEvent('Event');
+					evt.initEvent('resize', true, true);
+					window.dispatchEvent(evt);
+				}
+			}, 1000);
+		})();
+
+		document.oncontextmenu = function(event) {
+			event.preventDefault();
+		};
+
+		// Stop all audio when the browser window closes/navigates away
+		window.addEventListener('beforeunload', function() {
+			var s = window._gdAudioSocket;
+			if (s && s.readyState === 1) {
+				s.send(JSON.stringify({ type: 'audio', action: 'stopAll' }));
+			}
+		});
+		window.addEventListener('unload', function() {
+			var s = window._gdAudioSocket;
+			if (s && s.readyState === 1) {
+				s.send(JSON.stringify({ type: 'audio', action: 'stopAll' }));
+			}
+		});
+
+		(function connectWebSocket() {
+			var xhr = new XMLHttpRequest();
+			xhr.open('GET', '/wsPort', true);
+			xhr.onreadystatechange = function() {
+				if (xhr.readyState === 4 && xhr.status !== 200) {
+					setTimeout(connectWebSocket, 2000);
+					return;
+				}
+				if (xhr.readyState === 4 && xhr.status === 200) {
+					try { var data = JSON.parse(xhr.responseText); } catch(e) { setTimeout(connectWebSocket, 2000); return; }
+					if (!data || !data.port) { setTimeout(connectWebSocket, 2000); return; }
+					var socket = new WebSocket('ws://' + window.location.hostname + ':' + data.port);
+					window._gdAudioSocket = socket;
+					var keyMap = { up: 'ArrowUp', down: 'ArrowDown', space: ' ', z: 'z', x: 'x' };
+					var codeMap = { up: 'ArrowUp', down: 'ArrowDown', space: 'Space', z: 'KeyZ', x: 'KeyX' };
+					var keyCodeMap = { up: 38, down: 40, space: 32, z: 90, x: 88 };
+					// Track held keys so we can release them on WS drop (prevents stuck-jump bugs)
+					var heldKeys = {};
+					var dispatchKey = function(type, msgKey) {
+						var key = keyMap[msgKey] || msgKey;
+						var code = codeMap[msgKey] || '';
+						var keyCode = keyCodeMap[msgKey] || 0;
+						if (!code) return;
+						var init = { key: key, code: code, keyCode: keyCode, which: keyCode, bubbles: true };
+						document.dispatchEvent(new KeyboardEvent(type, init));
+						window.dispatchEvent(new KeyboardEvent(type, init));
+					};
+					socket.onmessage = function(evt) {
+						try { var msg = JSON.parse(evt.data); } catch(e) { return; }
+						if (msg.type === 'keydown' || msg.type === 'keyup') {
+							if (msg.type === 'keydown') heldKeys[msg.key] = true; else delete heldKeys[msg.key];
+							dispatchKey(msg.type, msg.key);
+						}
+					};
+					var releaseAllHeldKeys = function() {
+						for (var k in heldKeys) { if (heldKeys.hasOwnProperty(k)) dispatchKey('keyup', k); }
+						heldKeys = {};
+					};
+					socket.onclose = function() {
+						releaseAllHeldKeys();
+						setTimeout(connectWebSocket, 2000);
+					};
+					socket.onerror = function() {}; // onclose always fires after onerror
+				}
+			};
+			xhr.onerror = function() { setTimeout(connectWebSocket, 2000); };
+			xhr.send();
+		})();
+	</script>
+</head>
+
+<body>
+</body>
+
+</html>
