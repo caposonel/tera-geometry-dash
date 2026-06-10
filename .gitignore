@@ -4,3 +4,6 @@ settings.json.tmp
 
 # Runtime-generated AutoHotkey scripts
 ahk/
+
+# Dev tools
+update-manifest.js
