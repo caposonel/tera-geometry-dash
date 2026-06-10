@@ -151,6 +151,7 @@ var AudioManager = (function () {
   };
 
   AudioManager.prototype._ensureCorrectMusicMode = function () {
+    if (!this._musicPlaying) return; // original: `if (!this._music) return;` — without this, exiting a level restarts level music
     var isPracticeMode = this._scene._practicedMode && this._scene._practicedMode.practiceMode;
     var expectedKey = isPracticeMode ? "StayInsideMe" : window.currentlevel[0];
     if (this._currentKey !== expectedKey) {

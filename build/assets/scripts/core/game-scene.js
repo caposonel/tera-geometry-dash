@@ -6229,11 +6229,11 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._state.isSpider = false;
       this._state.isBird = false;
       if (checkpoint.isFlying) {
-        this._player.enterShipMode();
+        this._player.enterShipMode(null, true);
       } else if (checkpoint.isBall) {
         this._player.enterBallMode();
       } else if (checkpoint.isUfo) {
-        this._player.enterUfoMode();
+        this._player.enterUfoMode(null, true);
       } else if (checkpoint.isWave) {
         this._player.enterWaveMode();
       } else if (checkpoint.isSpider) {
@@ -6264,6 +6264,8 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._state.isUfo = checkpoint.isUfo;
       this._state.isSpider = checkpoint.isSpider;
       this._state.isBird = checkpoint.isBird;
+      this._state.ignorePortals = true;
+      this._state2.ignorePortals = true;
       this._level.resetGroundTiles(this._cameraX);
       this._level.resetObjects();
       this._level._flyCeilingY = checkpoint.flyCeilingY;
@@ -6843,6 +6845,8 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         }
       }
       this._state.lastY = initialY;
+      this._state.ignorePortals = false;
+      this._state2.ignorePortals = false;
       if (!this._endCameraOverride) {
         var cameraOffsetX = this._playerWorldX - centerX;
         if (this._level.endXPos > 0) {

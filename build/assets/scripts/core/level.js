@@ -2613,8 +2613,9 @@ window.LevelObject = /*#__PURE__*/function () {
             287: "dual_off"
           }[levelObj.id];
           var portalColliderType = (_gravity_flip$gravity = {
-            gravity_flip: "portal_gravity_up",
-            gravity_normal: "portal_gravity_down"
+            gravity_flip: "portal_gravity_down",
+            gravity_normal: "portal_gravity_up",
+            gravity_toggle: "portal_gravity_toggle"
           }, _defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_gravity_flip$gravity, flyPortal, "portal_fly"), "fly", "portal_fly"), cubePortal, "portal_cube"), "cube", "portal_cube"), "ball", "portal_ball"), "wave", portalWaveType), "ufo", portalUfoType), "spider", "portal_spider"), "mirrora", "portal_mirror_on"), "mirrorb", "portal_mirror_off"), _defineProperty(_defineProperty(_defineProperty(_defineProperty(_gravity_flip$gravity, "shrink", "portal_mini_on"), "grow", "portal_mini_off"), "dual_on", "portal_dual_on"), "dual_off", "portal_dual_off"))[portalSub] || null;
           if (portalColliderType) {
             var _collider2 = new Collider(portalColliderType, worldX, worldY, portalW, portalH, levelObj.rot || 0);

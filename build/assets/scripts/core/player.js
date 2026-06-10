@@ -56,6 +56,7 @@ var PlayerState = /*#__PURE__*/function () {
       this.isDashing = false;
       this.dashYVelocity = 0;
       this.isDual = false;
+      this.ignorePortals = false;
     }
   }]);
 }();
@@ -1195,6 +1196,7 @@ var PlayerObject = /*#__PURE__*/function () {
     key: "enterShipMode",
     value: function enterShipMode() {
       var _0xeb37c6 = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
+      var fromCheckpoint = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
       if (this.p.isFlying) {
         return;
       }
@@ -1202,7 +1204,9 @@ var PlayerObject = /*#__PURE__*/function () {
       this.exitWaveMode();
       this.p.isFlying = true;
       this._scene.toggleGlitter(true);
-      this.p.yVelocity *= 0.5;
+      if (!fromCheckpoint) {
+        this.p.yVelocity *= 0.5;
+      }
       this.p.onGround = false;
       this.p.canJump = false;
       this.p.isJumping = false;
@@ -1417,13 +1421,16 @@ var PlayerObject = /*#__PURE__*/function () {
     key: "enterUfoMode",
     value: function enterUfoMode() {
       var _portal = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : null;
+      var fromCheckpoint = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;
       if (this.p.isUfo) return;
       this.exitBallMode();
       this.exitWaveMode();
       this.exitShipMode();
       this.p.isUfo = true;
       this._scene.toggleGlitter(true);
-      this.p.yVelocity *= 0.4;
+      if (!fromCheckpoint) {
+        this.p.yVelocity *= 0.4;
+      }
       this.p.onGround = false;
       this.p.canJump = false;
       this.p.isJumping = false;
@@ -2390,12 +2397,19 @@ var PlayerObject = /*#__PURE__*/function () {
               var ldy = playersY - gameObj.y;
               var localX = ldx * cos + ldy * sin;
               var localY = -ldx * sin + ldy * cos;
-              _broadPhaseHit = Math.abs(localX) <= halfW + _broadSize && Math.abs(localY) <= halfH + _broadSize;
+              // Player is an axis-aligned box in WORLD space; its half-extent along each
+              // local axis is _broadSize*(|cos|+|sin|), not _broadSize (up to ~41% under at 45°)
+              var _inflate = _broadSize * (Math.abs(cos) + Math.abs(sin));
+              _broadPhaseHit = Math.abs(localX) <= halfW + _inflate && Math.abs(localY) <= halfH + _inflate;
             } else {
               _broadPhaseHit = !(pieceWidth + _broadSize <= left) && !(pieceWidth - _broadSize >= right) && !(playersY + _broadSize <= top) && !(playersY - _broadSize >= bottom);
             }
             if (_broadPhaseHit) {
               var _colType = gameObj.type;
+              if (_this3.p.ignorePortals && (_colType.indexOf("portal_") === 0 || _colType === "speed")) {
+                gameObj.activated = true;
+                return 0; // continue — consume portals silently during checkpoint restore
+              }
               if (_colType === "portal_fly") {
                 if (!gameObj.activated) {
                   gameObj.activated = true;
@@ -2466,6 +2480,12 @@ var PlayerObject = /*#__PURE__*/function () {
                   gameObj.activated = true;
                   _this3._playPortalShine(gameObj, 2);
                   _this3.flipGravity(true, 0.5);
+                }
+              } else if (_colType === "portal_gravity_toggle") {
+                if (!gameObj.activated) {
+                  gameObj.activated = true;
+                  _this3._playPortalShine(gameObj, 2);
+                  _this3.flipGravity(!_this3.p.gravityFlipped, 0.5);
                 }
               } else if (_colType === "portal_mirror_on") {
                 if (!gameObj.activated) {
@@ -3051,7 +3071,7 @@ var PlayerObject = /*#__PURE__*/function () {
           if (_ret) return _ret.v;
         }
       } catch (err) {
-        /* preserve original error semantics */
+        throw err; // propagate like the original — a swallowed error here silently disables collisions for the rest of the frame
       }
       if (this.p.collideTop !== 0 && this.p.collideBottom !== 0) {
         if (Math.abs(this.p.collideTop - this.p.collideBottom) < 48) {
@@ -3177,7 +3197,7 @@ var PlayerObject = /*#__PURE__*/function () {
             hitboxColor = 16729156;
           } else if (nearObject.type === "portal_fly" || nearObject.type === "portal_cube" || nearObject.type === "portal_ball" || nearObject.type === portalWaveType || nearObject.type === portalUfoType) {
             hitboxColor = 4491519;
-          } else if (nearObject.type === "portal_gravity_down" || nearObject.type === "portal_gravity_up") {
+          } else if (nearObject.type === "portal_gravity_down" || nearObject.type === "portal_gravity_up" || nearObject.type === "portal_gravity_toggle") {
             hitboxColor = 16776960;
           } else if (nearObject.type === "portal_mirror_on" || nearObject.type === "portal_mirror_off") {
             hitboxColor = 16744448;
