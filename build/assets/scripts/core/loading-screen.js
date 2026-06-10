@@ -264,15 +264,89 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
             if (_this.game.renderer.type === Phaser.CANVAS) {
               var renderer = _this.game.renderer;
               var _origBatchSprite = renderer.batchSprite.bind(renderer);
+              // --- Canvas tint support ---
+              // Phaser 3's CANVAS renderer ignores setTint entirely (WebGL-only
+              // feature), which kills ALL color in this game: backgrounds, ground,
+              // color triggers, player icon colors. We bake tinted copies of frames
+              // into offscreen canvases (multiply blend + alpha restore) and cache
+              // them. Tint is quantized to 32 levels/channel so color-trigger fades
+              // don't generate hundreds of cache entries.
+              var tintCache = {};
+              var tintCacheOrder = [];
+              var TINT_CACHE_MAX = 512;
+              var quantTint = function (tint) {
+                var r = (tint >> 16) & 0xff, g = (tint >> 8) & 0xff, b = tint & 0xff;
+                r = r >= 248 ? 255 : (r & 0xf8);
+                g = g >= 248 ? 255 : (g & 0xf8);
+                b = b >= 248 ? 255 : (b & 0xf8);
+                return (r << 16) | (g << 8) | b;
+              };
+              var bakeTintedFrame = function (frame, tint) {
+                var unrotate = !!frame.rotated;
+                var key = frame.source.texture.key + '|' + frame.name + '|' + tint + (unrotate ? 'r' : '');
+                var hit = tintCache[key];
+                if (hit) return hit;
+                var cd = frame.canvasData;
+                if (!cd || !frame.source.image) return null;
+                var outW = Math.max(1, frame.cutWidth);
+                var outH = Math.max(1, frame.cutHeight);
+                var storedW = unrotate ? frame.cutHeight : frame.cutWidth;
+                var storedH = unrotate ? frame.cutWidth : frame.cutHeight;
+                var cv = document.createElement('canvas');
+                cv.width = outW;
+                cv.height = outH;
+                var bctx = cv.getContext('2d');
+                var drawSrc = function (op) {
+                  bctx.globalCompositeOperation = op;
+                  if (unrotate) {
+                    bctx.save();
+                    bctx.translate(0, outH);
+                    bctx.rotate(-Math.PI / 2);
+                    bctx.drawImage(frame.source.image, cd.x, cd.y, storedW, storedH, 0, 0, outH, outW);
+                    bctx.restore();
+                  } else {
+                    bctx.drawImage(frame.source.image, cd.x, cd.y, storedW, storedH, 0, 0, outW, outH);
+                  }
+                };
+                drawSrc('source-over');
+                bctx.globalCompositeOperation = 'multiply';
+                bctx.fillStyle = '#' + ('00000' + (tint >>> 0).toString(16)).slice(-6);
+                bctx.fillRect(0, 0, outW, outH);
+                drawSrc('destination-in');
+                bctx.globalCompositeOperation = 'source-over';
+                tintCache[key] = cv;
+                tintCacheOrder.push(key);
+                if (tintCacheOrder.length > TINT_CACHE_MAX) delete tintCache[tintCacheOrder.shift()];
+                return cv;
+              };
+              // Tint the background TileSprite — it renders via its own canvas,
+              // not batchSprite. Multiply over the redrawn pattern (bg is opaque).
+              var origUpdateCanvas = Phaser.GameObjects.TileSprite.prototype.updateCanvas;
+              Phaser.GameObjects.TileSprite.prototype.updateCanvas = function () {
+                var tsTint = this.tintTopLeft;
+                if (this._lastAppliedTint !== tsTint) this.dirty = true;
+                var willRedraw = this.dirty;
+                origUpdateCanvas.call(this);
+                if (willRedraw && tsTint !== undefined && tsTint !== 0xffffff && this.canvas && this.canvas.width > 0) {
+                  var tctx = this.context;
+                  tctx.save();
+                  tctx.setTransform(1, 0, 0, 1, 0, 0);
+                  tctx.globalCompositeOperation = 'multiply';
+                  tctx.fillStyle = '#' + ('00000' + (tsTint >>> 0).toString(16)).slice(-6);
+                  tctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                  tctx.globalCompositeOperation = 'source-over';
+                  tctx.restore();
+                }
+                this._lastAppliedTint = tsTint;
+              };
               renderer.batchSprite = function (gameObject, frame, camera, parentMatrix) {
-                if (!frame.rotated) {
+                var spriteTint = gameObject.tintTopLeft;
+                var isTinted = spriteTint !== undefined && spriteTint !== 0xffffff && !gameObject.tintFill;
+                if (!frame.rotated && !isTinted) {
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
                 }
-                // For rotated frames: the atlas stores the sprite 90deg CW.
-                // Fall back to original for tinted sprites (color triggers, pulsed
-                // objects) so tinting still works — we can't replicate Phaser's
-                // _tintCanvas pipeline here.
-                if (gameObject.tintFill || (gameObject.tint !== undefined && gameObject.tint !== 0xffffff)) {
+                // Cropped and tintFill sprites keep the stock pipeline
+                if (gameObject.tintFill && !frame.rotated) {
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
                 }
                 // cutWidth/cutHeight = un-rotated dims from JSON (NOT stored dims).
@@ -284,7 +358,7 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 if (!cd) return _origBatchSprite(gameObject, frame, camera, parentMatrix);
                 var srcX = cd.x;
                 var srcY = cd.y;
-                // Stored region in atlas has swapped dimensions
+                // Stored region in atlas has swapped dimensions (rotated frames)
                 var storedW = frame.cutHeight;
                 var storedH = frame.cutWidth;
                 var res = frame.source.resolution;
@@ -296,6 +370,14 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 if (gameObject.isCropped) {
                   // Fall back to original for cropped sprites
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
+                }
+                var baked = null;
+                if (isTinted) {
+                  baked = bakeTintedFrame(frame, quantTint(spriteTint));
+                  if (!baked && !frame.rotated) {
+                    // Bake failed (no canvasData) — at least render untinted
+                    return _origBatchSprite(gameObject, frame, camera, parentMatrix);
+                  }
                 }
                 var flipScaleX = 1;
                 var flipScaleY = 1;
@@ -333,7 +415,18 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 ctx.globalAlpha = alpha;
                 ctx.imageSmoothingEnabled = !frame.source.scaleMode;
                 if (gameObject.mask) gameObject.mask.preRenderCanvas(renderer, gameObject, camera);
-                if (storedW > 0 && storedH > 0) {
+                if (baked) {
+                  // Baked canvas is already un-rotated and tinted — plain draw
+                  var bDrawW = frame.cutWidth / res;
+                  var bDrawH = frame.cutHeight / res;
+                  if (camera.roundPixels) {
+                    dx = Math.floor(dx + 0.5);
+                    dy = Math.floor(dy + 0.5);
+                    bDrawW += 0.5;
+                    bDrawH += 0.5;
+                  }
+                  ctx.drawImage(baked, 0, 0, baked.width, baked.height, dx, dy, bDrawW, bDrawH);
+                } else if (storedW > 0 && storedH > 0) {
                   // Un-rotate: translate+rotate to counteract the 90deg CW storage
                   var drawW = frame.cutWidth / res;
                   var drawH = frame.cutHeight / res;
@@ -350,7 +443,7 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 if (gameObject.mask) gameObject.mask.postRenderCanvas(renderer, gameObject, camera);
                 ctx.restore();
               };
-              console.log('Patched Canvas renderer for rotated atlas frames');
+              console.log('Patched Canvas renderer: rotated atlas frames + canvas tinting');
             }
             _this.scene.start("GameScene");
           });
