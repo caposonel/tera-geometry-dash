@@ -1795,7 +1795,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
               } else {
                 finalSongId = -extracted.officialSongId - 1;
                 try {
-                  finalSongName = window.allLevels[extracted.officialSongId][0];
+                  finalSongName = window.allLevels[extracted.officialSongId][1];
                 } catch (e) {
                   finalSongName = "Unknown";
                 }
@@ -1830,6 +1830,9 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         fileInput.click();
       };
       this._exportGMD = function (level) {
+        var escapeXml = function (s) {
+          return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        };
         var encodedDesc = btoa(level.description || "");
         var authorName = "Web Dashers";
         var officialSong = level.songId < 0 ? Math.abs(level.songId) : 0;
@@ -1841,12 +1844,12 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         xml += "<k>k1</k><i>".concat(level.levelId && level.levelId !== "NA" ? level.levelId.replace(/\D/g, "") : 0, "</i>");
         xml += "<k>k18</k><i>".concat(level.levelLength || 0, "</i>");
         xml += "<k>k23</k><i>".concat(level.levelLength || 0, "</i>");
-        xml += "<k>k2</k><s>".concat(level.levelName, "</s>");
+        xml += "<k>k2</k><s>".concat(escapeXml(level.levelName), "</s>");
         xml += "<k>k4</k><s>".concat(level.levelString, "</s>");
         xml += "<k>k3</k><s>".concat(encodedDesc, "</s>");
         xml += "<k>k5</k><s>".concat(authorName, "</s>");
         xml += '<k>k101</k><s>0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0</s>';
-        xml += "<k>k8</k><i>".concat(officialSong - 1, "</i>");
+        xml += "<k>k8</k><i>".concat(officialSong > 0 ? officialSong - 1 : 0, "</i>");
         xml += "<k>k45</k><i>".concat(customSong, "</i>");
         xml += "<k>k16</k><i>".concat(level.version || 1, "</i>");
         xml += '<k>k13</k><t/><k>k21</k><i>2</i><k>k50</k><i>47</i>';
@@ -3503,7 +3506,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       });
       this._practiceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
       this._practiceKey.on("down", function () {
-        if (!_this2._menuActive && !_this2._slideIn) {
+        if (!_this2._menuActive && !_this2._slideIn && !_this2._paused && !_this2._levelWon && !_this2._state.isDead) {
           var isPracticeMode = _this2._practicedMode.togglePracticeMode();
           if (_this2._checkpointBtnContainer) {
             _this2._checkpointBtnContainer.setVisible(isPracticeMode);
@@ -3574,7 +3577,9 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
           if (!s || !s._audio) return;
           if (document.hidden) {
             s._audio.pauseMusic();
-          } else if (!s._menuActive && !s._paused && s._state && !s._state.isDead && !s._levelWon) {
+          } else if (s._menuActive) {
+            s._audio.resumeMusic(); // menu music paused by tab-away must resume too
+          } else if (!s._paused && s._state && !s._state.isDead && !s._levelWon) {
             s._audio.resumeMusic();
           }
         });
@@ -3638,14 +3643,24 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       window.updateLogShown = true;
       // window.levelID auto-open removed along with the online level search feature
       if (this.game.registry.get("autoStartGame")) {
-        this.game.registry.remove("autoStartGame");
-        this._levelLabel.setVisible(false);
-        this._leftBtn.setVisible(false);
-        this._rightBtn.setVisible(false);
-        if (this._practiceModeBarContainer) {
-          this._practiceModeBarContainer.setVisible(this._practicedMode && this._practicedMode.practiceMode);
+        if (!window.settingsMap) {
+          var cachedLevelText = this.cache.text.get(window.currentlevel[2]);
+          if (cachedLevelText) {
+            this._level.loadLevel(cachedLevelText);
+          }
         }
-        this._startGame();
+        if (window.settingsMap) {
+          this.game.registry.remove("autoStartGame");
+          this._levelLabel.setVisible(false);
+          this._leftBtn.setVisible(false);
+          this._rightBtn.setVisible(false);
+          if (this._practiceModeBarContainer) {
+            this._practiceModeBarContainer.setVisible(this._practicedMode && this._practicedMode.practiceMode);
+          }
+          this._startGame();
+        } else {
+          console.warn("autoStartGame: missing settingsMap for", window.currentlevel && window.currentlevel[2]);
+        }
       }
     }
   }, {
@@ -4504,9 +4519,11 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var btn = _this8.add.image(_0x599a9b + width / 2, 390, item.atlas, item.frame).setInteractive();
         if (item.action === null) {
           _this8._pausePracticeBtn = btn;
+          btn.setAngle(90).setFlipY(true);
           _this8._makeBouncyButton(btn, 1, function () {
             var isPracticeMode = _this8._practicedMode.togglePracticeMode();
             btn.setTexture("GJ_GameSheet03", isPracticeMode ? "GJ_normalBtn_001.png" : "GJ_practiceBtn_001.png");
+            btn.setAngle(90).setFlipY(true);
             if (_this8._checkpointBtnContainer) _this8._checkpointBtnContainer.setVisible(isPracticeMode);
             _this8._resumeGame();
             if (!isPracticeMode) {
@@ -5895,6 +5912,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._player2.setBallVisible(false);
       this._player2.setWaveVisible(false);
       this._levelAttempts = 1;
+      this._levelJumps = 0;
       this._attempts++;
       localStorage.setItem("gd_totalAttempts", this._attempts);
       this._attemptsLabel.setText("Attempt " + this._levelAttempts);
@@ -5935,10 +5953,12 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         if (!this._state.isFlying && !this._state.isWave && !this._state.isUfo && this._state.canJump) {
           this._player.updateJump(0);
           this._totalJumps++;
+          this._levelJumps++;
           localStorage.setItem("gd_totalJumps", this._totalJumps);
         } else if (this._state.isUfo) {
           this._player.updateJump(0);
           this._totalJumps++;
+          this._levelJumps++;
           localStorage.setItem("gd_totalJumps", this._totalJumps);
         }
       }
@@ -6052,6 +6072,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._attempts++;
       localStorage.setItem("gd_totalAttempts", this._attempts);
       this._levelAttempts++;
+      this._levelJumps = 0;
       var _0x2ba78a = this._cameraX;
       if (this._levelWon && this._practicedMode.practiceMode) {
         this._practicedMode.togglePracticeMode();
@@ -6134,10 +6155,8 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         this._state.mirrored = pos.mirrored;
         this._level.fastForwardTriggers(pos.x, this._colorManager);
       }
-      if (!this._practicedMode.practiceMode) {
-        this._audio.reset();
-        this._audio.startMusic(musicOffset);
-      }
+      this._audio.reset();
+      this._audio.startMusic(musicOffset);
       this._paused = false;
       if (this._pauseContainer) {
         this._pauseContainer.destroy();
@@ -6615,13 +6634,16 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         }
         return;
       }
-      var _0x368ad9 = this._spaceKey.isDown || this._upKey.isDown || this._wKey.isDown;
-      if (!this._updateLogPopup && _0x368ad9 && (!this._spaceWasDown || !this._state.upKeyDown)) {
-        this._pushButton();
-      } else if (!_0x368ad9 && this._spaceWasDown) {
-        this._releaseButton();
-      }
-      this._spaceWasDown = _0x368ad9;
+      var _this22 = this;
+      this._applyJumpInput = function () {
+        var jumpHeld = _this22._spaceKey.isDown || _this22._upKey.isDown || _this22._wKey.isDown || _this22._lKey.isDown;
+        if (!_this22._updateLogPopup && jumpHeld && !_this22._spaceWasDown) {
+          _this22._pushButton();
+        } else if (!jumpHeld && _this22._spaceWasDown) {
+          _this22._releaseButton();
+        }
+        _this22._spaceWasDown = jumpHeld;
+      };
       var objectsUnderPointer = this.input.manager.hitTest(this.input.activePointer, this._startPosGui.list, this.cameras.main);
       var isOverUI = objectsUnderPointer.length > 0;
       var fromClick = this.input.activePointer.isDown;
@@ -6815,6 +6837,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       var initialY = this._state.y;
       for (var i = 0; i < subSteps; i++) {
         this._state.lastY = this._state.y;
+        this._applyJumpInput();
         this._player.updateJump(verticalDelta);
         this._state.y += this._state.yVelocity * verticalDelta;
         this._player.checkCollisions(this._playerWorldX - centerX);
@@ -7251,7 +7274,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
     value: function _showCompleteText() {
       var _this21 = this;
       var _0x56628c = screenWidth / 2;
-      var _0x45ab26 = this.add.image(_0x56628c, 250, "GJ_WebSheet", "GJ_levelComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01);
+      var _0x45ab26 = this._practicedMode.practiceMode ? this.add.image(_0x56628c, 250, "GJ_GameSheet03", "GJ_practiceComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01) : this.add.image(_0x56628c, 250, "GJ_WebSheet", "GJ_levelComplete_001.png").setScrollFactor(0).setDepth(60).setScale(0.01);
       this.tweens.add({
         targets: _0x45ab26,
         scale: 1.1,
@@ -7374,13 +7397,13 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       var _0x3e9c79 = _0x33b564.y - 35;
       this._endLayerInternal.add(this.add.image(containerX - 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
       this._endLayerInternal.add(this.add.image(containerX + 312, _0x3e9c79, "GJ_WebSheet", "chain_01_001.png").setOrigin(0.5, 1));
-      this._endLayerInternal.add(this.add.image(containerX, 170, "GJ_WebSheet", "GJ_levelComplete_001.png").setScale(0.8));
+      this._endLayerInternal.add(this._practicedMode.practiceMode ? this.add.image(containerX, 170, "GJ_GameSheet03", "GJ_practiceComplete_001.png").setScale(0.8) : this.add.image(containerX, 170, "GJ_WebSheet", "GJ_levelComplete_001.png").setScale(0.8));
       var _0x45b6e4 = 0.8;
       var _0xe44f6d = 250;
-      var _0x2de55e = this.add.bitmapText(containerX, _0xe44f6d, "goldFont", "Attempts: " + this._attempts, 40).setOrigin(0.5, 0.5).setScale(_0x45b6e4);
+      var _0x2de55e = this.add.bitmapText(containerX, _0xe44f6d, "goldFont", "Attempts: " + this._levelAttempts, 40).setOrigin(0.5, 0.5).setScale(_0x45b6e4);
       this._endLayerInternal.add(_0x2de55e);
       _0xe44f6d += 48;
-      this._endLayerInternal.add(this.add.bitmapText(containerX, _0xe44f6d, "goldFont", "Jumps: " + this._totalJumps, 40).setOrigin(0.5, 0.5).setScale(_0x45b6e4));
+      this._endLayerInternal.add(this.add.bitmapText(containerX, _0xe44f6d, "goldFont", "Jumps: " + this._levelJumps, 40).setOrigin(0.5, 0.5).setScale(_0x45b6e4));
       _0xe44f6d += 48;
       var _0x596450 = Math.floor(this._playTime);
       var _0x30687e = Math.floor(_0x596450 / 3600);

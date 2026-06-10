@@ -133,7 +133,7 @@ module.exports = function GeometryDash(mod) {
                     var key = typeof msg.key === 'string' ? msg.key : null
                     switch (msg.action) {
                         case 'playMusic':
-                            if (key) audioPlayer.playMusic(key, msg.loop)
+                            if (key) audioPlayer.playMusic(key, msg.loop, msg.seek)
                             break
                         case 'stopMusic':
                             audioPlayer.stopMusic()

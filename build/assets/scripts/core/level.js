@@ -2294,6 +2294,7 @@ window.LevelObject = /*#__PURE__*/function () {
           var backFrame = frameName.replace("_front_", "_back_");
           portalBackSprite = addImageToScene(scene, spriteWorldX, baseY, backFrame);
           if (portalBackSprite) {
+            this._applyVisualProps(scene, portalBackSprite, backFrame, levelObj);
             portalBackSprite._eeLayer = 1;
             portalBackSprite._eeWorldX = worldX;
             portalBackSprite._eeBaseY = baseY;

@@ -15,6 +15,7 @@ var AudioManager = (function () {
 
   function AudioManager(scene) {
     var _localStorage$getItem;
+    window._gdAudioManager = this; // index.html calls resyncToBackend() on WS (re)connect
     this._scene = scene;
     this._music = null;
     this._currentKey = null;
@@ -38,16 +39,21 @@ var AudioManager = (function () {
     var StartPosOffset = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0;
     this.stopMusic();
     var key;
+    var seek = 0;
     if (this._scene._practicedMode && this._scene._practicedMode.practiceMode) {
       key = "StayInsideMe";
     } else {
       key = window.currentlevel[0];
+      // original: this._music.seek = kA13 + StartPosOffset (level song offset + startpos offset)
+      var levelOffset = window.settingsMap && window.settingsMap['kA13'] ? Number(window.settingsMap['kA13']) : 0;
+      seek = (isFinite(levelOffset) ? levelOffset : 0) + (isFinite(StartPosOffset) ? StartPosOffset : 0);
+      if (seek < 0) seek = 0;
     }
     this._currentKey = key;
     this._musicPlaying = true;
     this._musicPaused = false;
     _sendAudio({ type: 'audio', action: 'setVolume', volume: this._effectiveVolume() });
-    _sendAudio({ type: 'audio', action: 'playMusic', key: key, loop: true });
+    _sendAudio({ type: 'audio', action: 'playMusic', key: key, loop: true, seek: seek });
   };
 
   AudioManager.prototype.startMenuMusic = function () {
@@ -133,6 +139,8 @@ var AudioManager = (function () {
         clearInterval(self._fadeInterval);
         self._fadeInterval = null;
         self.stopMusic();
+        // Backend persists the faded-down volume and applies it to SFX too — restore it
+        _sendAudio({ type: 'audio', action: 'setVolume', volume: self._effectiveVolume() });
         return;
       }
       var vol = Math.max(0, startVol * (1 - step / steps));
@@ -148,6 +156,15 @@ var AudioManager = (function () {
 
   AudioManager.prototype._setupAnalyser = function () {
     // No Web Audio in Coherent GT
+  };
+
+  // Called from index.html when the WS (re)connects: commands sent while the
+  // socket was down were silently dropped, so re-issue volume and current music.
+  AudioManager.prototype.resyncToBackend = function () {
+    _sendAudio({ type: 'audio', action: 'setVolume', volume: this._effectiveVolume() });
+    if (this._musicPlaying && !this._musicPaused && this._currentKey) {
+      _sendAudio({ type: 'audio', action: 'playMusic', key: this._currentKey, loop: true, seek: 0 });
+    }
   };
 
   AudioManager.prototype._ensureCorrectMusicMode = function () {

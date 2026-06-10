@@ -216,6 +216,12 @@
 						for (var k in heldKeys) { if (heldKeys.hasOwnProperty(k)) dispatchKey('keyup', k); }
 						heldKeys = {};
 					};
+					socket.onopen = function() {
+						// Re-issue volume + current music: anything sent while the socket was down was dropped
+						if (window._gdAudioManager && window._gdAudioManager.resyncToBackend) {
+							try { window._gdAudioManager.resyncToBackend(); } catch (e) {}
+						}
+					};
 					socket.onclose = function() {
 						releaseAllHeldKeys();
 						setTimeout(connectWebSocket, 2000);
