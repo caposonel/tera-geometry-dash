@@ -3311,7 +3311,7 @@ var PlayerObject = /*#__PURE__*/function () {
       var _0x47ae60 = _0x501b73;
       var _0x1f2e19 = _0x4a45d7 + 80;
       var _0x8bc9f4 = _0x568b25 + 300;
-      var _0x11b580 = [this._playerSpriteLayer, this._playerGlowLayer, this._playerOverlayLayer, this._playerExtraLayer, this._ballSpriteLayer, this._ballGlowLayer, this._ballOverlayLayer, this._waveSpriteLayer, this._waveOverlayLayer, this._waveExtraLayer, this._waveGlowLayer, this._shipSpriteLayer, this._shipGlowLayer, this._shipOverlayLayer, this._shipExtraLayer].filter(function (_0x3e9c62) {
+      var _0x11b580 = [this._playerSpriteLayer, this._playerGlowLayer, this._playerOverlayLayer, this._playerExtraLayer, this._ballSpriteLayer, this._ballGlowLayer, this._ballOverlayLayer, this._waveSpriteLayer, this._waveOverlayLayer, this._waveExtraLayer, this._waveGlowLayer, this._shipSpriteLayer, this._shipGlowLayer, this._shipOverlayLayer, this._shipExtraLayer, this._spiderSpriteLayer, this._spiderGlowLayer, this._spiderOverlayLayer, this._spiderExtraLayer].filter(function (_0x3e9c62) {
         return _0x3e9c62 && _0x3e9c62.sprite.visible;
       }).map(function (_0x5cedeb) {
         return _0x5cedeb.sprite;
@@ -3362,7 +3362,8 @@ var PlayerObject = /*#__PURE__*/function () {
           var _0x3d0365 = _0x2478d6 - _0x3729ef._cameraX;
           var _0x3790a9 = b(_0x148e69) + _0x3729ef._cameraY;
           var _0x1cb4d3 = 1 - spriteWidth * spriteWidth;
-          var _0x1d2e2f = _0x3fc5a5[0].spr.rotation;
+          // Guard: with no visible layer (unknown future gamemode) still finish the level
+          var _0x1d2e2f = _0x3fc5a5.length ? _0x3fc5a5[0].spr.rotation : 0;
           var _0xd3cb2a = Math.cos(_0x1d2e2f);
           var _0x2f86c2 = Math.sin(_0x1d2e2f);
           _this5._scene._interpolatedPercent = _this5._startPercent + (100 - _this5._startPercent) * spriteWidth;
