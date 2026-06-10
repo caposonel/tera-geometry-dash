@@ -163,6 +163,10 @@ module.exports = function GeometryDash(mod) {
             // immediately kill the AHK script.
             setImmediate(function () {
                 if (wsServer.clients.size === 0 && gameOpen) {
+                    // Cut audio NOW — if this is just a reload, the frontend
+                    // re-syncs music on reconnect (resyncToBackend), so there's
+                    // no reason to let it keep playing through the debounce.
+                    audioPlayer.stopAll()
                     if (autoCloseTimer) clearTimeout(autoCloseTimer)
                     autoCloseTimer = setTimeout(function () {
                         autoCloseTimer = null
@@ -179,7 +183,7 @@ module.exports = function GeometryDash(mod) {
             client.isAlive = false
             try { client.ping(function () { }) } catch (e) {}
         })
-    }, 5000)
+    }, 2000)
 
     ui.get('/wsPort', function (req, res) {
         var addr = server.address()

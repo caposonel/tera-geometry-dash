@@ -216,10 +216,10 @@
             "overwrite": false,
             "hash": "7dfaf1ce90d1d24bd5c0161b07ae8c12b3048660d2e2bfdcc3545a3b6fb541d5"
         },
-        "index.js": "c7e6240b732f307a72db235c8df090af2528768813642612ff07d90268ac4ea2",
+        "index.js": "2e955ab5eb641855bab28356f63a17336081aa83633b22dddc405c4685502569",
         "lib/ahk.js": "d3014b1d0872f42bde81bff54e5dbbe45fcb9b816dd0099086eed54e546538d2",
-        "lib/audio-player.js": "a2f3fe3544e905b374ddb77bcfd94b92c6ebadf3ec3d82af99548470534434ee",
-        "module.json": "e3c4d90521b86709b77060365de412dfc4c224475f7aea73a08239ef3abc5192",
+        "lib/audio-player.js": "d554e26f3cc016dee7abc91013e46f752d9b24a587534b827c17fc4f13d0296d",
+        "module.json": "40e0f01994e1072a0eea398904b9cf5f02ab9ffae98b874e2c4aef48be729f63",
         "node_modules/ws/LICENSE": "3de284c8e6fa7e8437eff6f53695471e0332129a5b42a79361e17b7637de94b3",
         "node_modules/ws/README.md": "11509f77b958b378281ac6dc8469d8637dee4aa73935eb3f80c67524fde55513",
         "node_modules/ws/browser.js": "010da44addea1d88b2b732540c3f1fd0cbcb28926b96623d4c64222e0ead2d0e",
