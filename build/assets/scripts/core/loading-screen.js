@@ -274,6 +274,20 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
               var tintCache = {};
               var tintCacheOrder = [];
               var TINT_CACHE_MAX = 512;
+              // Coherent GT does not support canvas blend modes like 'multiply'
+              // (only Porter-Duff composites). Per spec, assigning an unsupported
+              // globalCompositeOperation is silently ignored — so assign and read
+              // back to detect support without needing pixel access.
+              var supportsMultiply = (window.__forceTintFallback || localStorage.getItem('__forceTintFallback')) ? false : (function () {
+                try {
+                  var c = document.createElement('canvas');
+                  c.width = 1; c.height = 1;
+                  var x = c.getContext('2d');
+                  x.globalCompositeOperation = 'multiply';
+                  return x.globalCompositeOperation === 'multiply';
+                } catch (e) { return false; }
+              })();
+              console.log('Canvas tint mode: ' + (supportsMultiply ? 'multiply' : 'source-atop fallback'));
               var quantTint = function (tint) {
                 var r = (tint >> 16) & 0xff, g = (tint >> 8) & 0xff, b = tint & 0xff;
                 r = r >= 248 ? 255 : (r & 0xf8);
@@ -309,10 +323,19 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                   }
                 };
                 drawSrc('source-over');
-                bctx.globalCompositeOperation = 'multiply';
-                bctx.fillStyle = '#' + ('00000' + (tint >>> 0).toString(16)).slice(-6);
-                bctx.fillRect(0, 0, outW, outH);
-                drawSrc('destination-in');
+                if (supportsMultiply) {
+                  bctx.globalCompositeOperation = 'multiply';
+                  bctx.fillStyle = '#' + ('00000' + (tint >>> 0).toString(16)).slice(-6);
+                  bctx.fillRect(0, 0, outW, outH);
+                  drawSrc('destination-in');
+                } else {
+                  // Porter-Duff-only approximation: source-atop colors existing pixels
+                  // (preserves alpha by definition). GD textures are mostly white, so a
+                  // strong color wash is close to a true multiply.
+                  bctx.globalCompositeOperation = 'source-atop';
+                  bctx.fillStyle = 'rgba(' + ((tint >> 16) & 0xff) + ',' + ((tint >> 8) & 0xff) + ',' + (tint & 0xff) + ',0.85)';
+                  bctx.fillRect(0, 0, outW, outH);
+                }
                 bctx.globalCompositeOperation = 'source-over';
                 tintCache[key] = cv;
                 tintCacheOrder.push(key);
@@ -331,8 +354,13 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                   var tctx = this.context;
                   tctx.save();
                   tctx.setTransform(1, 0, 0, 1, 0, 0);
-                  tctx.globalCompositeOperation = 'multiply';
-                  tctx.fillStyle = '#' + ('00000' + (tsTint >>> 0).toString(16)).slice(-6);
+                  if (supportsMultiply) {
+                    tctx.globalCompositeOperation = 'multiply';
+                    tctx.fillStyle = '#' + ('00000' + (tsTint >>> 0).toString(16)).slice(-6);
+                  } else {
+                    tctx.globalCompositeOperation = 'source-atop';
+                    tctx.fillStyle = 'rgba(' + ((tsTint >> 16) & 0xff) + ',' + ((tsTint >> 8) & 0xff) + ',' + (tsTint & 0xff) + ',0.85)';
+                  }
                   tctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                   tctx.globalCompositeOperation = 'source-over';
                   tctx.restore();
