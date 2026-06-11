@@ -180,8 +180,10 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
         var s = Math.max(W / tex.source[0].width, H / tex.source[0].height);
         var bg = _this.add.image(cx, cy, "game_bg_01").setScale(s).setTint(0x0066ff);
         _this.children.sendToBack(bg);
-        sliderFill = _this.add.tileSprite(sliderOriginX - 100, sliderOriginY - 2, 0, 14, "sliderBar");
+        // Rectangle, not TileSprite: GT can't createPattern (TileSprites render black)
+        sliderFill = _this.add.rectangle(sliderOriginX - 100, sliderOriginY - 2, 380, 14, 0x00aaff);
         sliderFill.setOrigin(0, 0.5);
+        sliderFill.scaleX = 0;
         _this.add.image(sliderOriginX + 105, sliderOriginY, "GJ_WebSheet", "slidergroove.png").setOrigin(0.5, 0.5);
         var goldFontData = _this.cache.text.get("goldFontFnt");
         if (goldFontData && !_this.cache.bitmapFont.has("goldFont")) {
@@ -190,7 +192,7 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
         var msg = LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)];
         _this.add.bitmapText(cx, cy + 187, "goldFont", msg, 30).setOrigin(0.5);
         var robtopLogo = _this.add.image(cx, cy - 120, "GJ_LaunchSheet", "RobTopLogoBig_001.png").setOrigin(0.5).setScale(0.8);
-        var gjLogo = _this.add.image(cx, cy, "GJ_WebSheet", "gj_logo.png").setOrigin(0.5);
+        var gjLogo = _this.add.image(cx, cy, "GJ_WebSheet", "GJ_logo_001.png").setOrigin(0.5);
         _this.children.bringToTop(robtopLogo);
         _this.children.bringToTop(gjLogo);
         // XHR cache override disabled — causes stalls with large local assets
@@ -242,11 +244,11 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
         // AudioManager sends play commands over the WebSocket to the mod backend,
         // which plays MP3/OGG natively via PowerShell MediaPlayer.
         _this.load.on("progress", function (value) {
-          if (sliderFill) sliderFill.width = value * 380;
+          if (sliderFill) sliderFill.scaleX = value;
         });
         _this.load.on("loaderror", function () {});
         _this.load.once("complete", function () {
-          if (sliderFill) sliderFill.width = 380;
+          if (sliderFill) sliderFill.scaleX = 1;
           _this.time.delayedCall(200, function () {
             var bigFontData = _this.cache.text.get("bigFontFnt");
             if (bigFontData) loadFont(_this, "bigFont", bigFontData);
@@ -264,15 +266,110 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
             if (_this.game.renderer.type === Phaser.CANVAS) {
               var renderer = _this.game.renderer;
               var _origBatchSprite = renderer.batchSprite.bind(renderer);
+              // ── Canvas tinting (Phaser CANVAS ignores setTint entirely) ──
+              // Detection: NEVER trust globalCompositeOperation readback (Coherent GT
+              // echoes assigned strings without implementing the blend). Instead trust
+              // pixel reads only if they demonstrably work (GT's getImageData is
+              // polyfilled to blank), then pixel-verify 'multiply' for real.
+              var pixelReadsWork = (function () {
+                try {
+                  var c = document.createElement('canvas');
+                  c.width = c.height = 1;
+                  var x = c.getContext('2d');
+                  x.fillStyle = '#ff0000';
+                  x.fillRect(0, 0, 1, 1);
+                  var d = x.getImageData(0, 0, 1, 1).data;
+                  return d[0] === 255 && d[3] === 255;
+                } catch (e) { return false; }
+              })();
+              var multiplyWorks = pixelReadsWork && (function () {
+                try {
+                  var c = document.createElement('canvas');
+                  c.width = c.height = 1;
+                  var x = c.getContext('2d');
+                  x.fillStyle = '#ffffff';
+                  x.fillRect(0, 0, 1, 1);
+                  x.globalCompositeOperation = 'multiply';
+                  x.fillStyle = '#102030';
+                  x.fillRect(0, 0, 1, 1);
+                  var d = x.getImageData(0, 0, 1, 1).data;
+                  return d[0] === 16 && d[1] === 32 && d[2] === 48;
+                } catch (e) { return false; }
+              })();
+              // gd_tint_mode: auto | multiply | silhouette | off (set via localStorage
+              // to override, e.g. if a technique misbehaves in some environment)
+              var tintMode = (function () { try { return localStorage.getItem('gd_tint_mode') || 'auto'; } catch (e) { return 'auto'; } })();
+              var useMultiply = tintMode === 'multiply' || (tintMode === 'auto' && multiplyWorks);
+              var tintEnabled = tintMode !== 'off';
+              console.log('Canvas tint mode: ' + (tintEnabled ? (useMultiply ? 'multiply (pixel-verified)' : 'silhouette (Porter-Duff only)') : 'OFF'));
+              var tintCache = {};
+              var tintCacheOrder = [];
+              var TINT_CACHE_MAX = 512;
+              var quantTint = function (tint) {
+                var r = (tint >> 16) & 0xff, g = (tint >> 8) & 0xff, b = tint & 0xff;
+                r = r >= 248 ? 255 : (r & 0xf8);
+                g = g >= 248 ? 255 : (g & 0xf8);
+                b = b >= 248 ? 255 : (b & 0xf8);
+                return (r << 16) | (g << 8) | b;
+              };
+              // Bake a tinted (and un-rotated, if needed) copy of the frame.
+              // multiply path (desktop): src × tint, exact shading preserved.
+              // silhouette path (GT): fill tint, clip to frame alpha via
+              // 'destination-in' (proven working in GT) — exact for the white-art
+              // pixels GD textures are mostly made of.
+              var bakeTintedFrame = function (frame, tint) {
+                var unrotate = !!frame.rotated;
+                var key = frame.source.texture.key + '|' + frame.name + '|' + tint + (unrotate ? 'r' : '');
+                var hit = tintCache[key];
+                if (hit) return hit;
+                var cd = frame.canvasData;
+                if (!cd || !frame.source.image) return null;
+                var outW = Math.max(1, frame.cutWidth);
+                var outH = Math.max(1, frame.cutHeight);
+                var storedW = unrotate ? frame.cutHeight : frame.cutWidth;
+                var storedH = unrotate ? frame.cutWidth : frame.cutHeight;
+                var cv = document.createElement('canvas');
+                cv.width = outW;
+                cv.height = outH;
+                var bctx = cv.getContext('2d');
+                var drawSrc = function (op) {
+                  bctx.globalCompositeOperation = op;
+                  if (unrotate) {
+                    bctx.save();
+                    bctx.translate(0, outH);
+                    bctx.rotate(-Math.PI / 2);
+                    bctx.drawImage(frame.source.image, cd.x, cd.y, storedW, storedH, 0, 0, outH, outW);
+                    bctx.restore();
+                  } else {
+                    bctx.drawImage(frame.source.image, cd.x, cd.y, storedW, storedH, 0, 0, outW, outH);
+                  }
+                };
+                var hex = '#' + ('00000' + (tint >>> 0).toString(16)).slice(-6);
+                if (useMultiply) {
+                  drawSrc('source-over');
+                  bctx.globalCompositeOperation = 'multiply';
+                  bctx.fillStyle = hex;
+                  bctx.fillRect(0, 0, outW, outH);
+                  drawSrc('destination-in');
+                } else {
+                  bctx.globalCompositeOperation = 'source-over';
+                  bctx.fillStyle = hex;
+                  bctx.fillRect(0, 0, outW, outH);
+                  drawSrc('destination-in');
+                }
+                bctx.globalCompositeOperation = 'source-over';
+                tintCache[key] = cv;
+                tintCacheOrder.push(key);
+                if (tintCacheOrder.length > TINT_CACHE_MAX) delete tintCache[tintCacheOrder.shift()];
+                return cv;
+              };
               renderer.batchSprite = function (gameObject, frame, camera, parentMatrix) {
-                if (!frame.rotated) {
+                var spriteTint = gameObject.tintTopLeft;
+                var isTinted = tintEnabled && spriteTint !== undefined && spriteTint !== 0xffffff && !gameObject.tintFill && !gameObject.isCropped;
+                if (!frame.rotated && !isTinted) {
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
                 }
-                // For rotated frames: the atlas stores the sprite 90deg CW.
-                // Fall back to original for tinted sprites (color triggers, pulsed
-                // objects) so tinting still works — we can't replicate Phaser's
-                // _tintCanvas pipeline here.
-                if (gameObject.tintFill || (gameObject.tint !== undefined && gameObject.tint !== 0xffffff)) {
+                if (gameObject.tintFill && !frame.rotated) {
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
                 }
                 // cutWidth/cutHeight = un-rotated dims from JSON (NOT stored dims).
@@ -296,6 +393,13 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 if (gameObject.isCropped) {
                   // Fall back to original for cropped sprites
                   return _origBatchSprite(gameObject, frame, camera, parentMatrix);
+                }
+                var baked = null;
+                if (isTinted) {
+                  baked = bakeTintedFrame(frame, quantTint(spriteTint));
+                  if (!baked && !frame.rotated) {
+                    return _origBatchSprite(gameObject, frame, camera, parentMatrix);
+                  }
                 }
                 var flipScaleX = 1;
                 var flipScaleY = 1;
@@ -333,7 +437,18 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 ctx.globalAlpha = alpha;
                 ctx.imageSmoothingEnabled = !frame.source.scaleMode;
                 if (gameObject.mask) gameObject.mask.preRenderCanvas(renderer, gameObject, camera);
-                if (storedW > 0 && storedH > 0) {
+                if (baked) {
+                  // Baked canvas is already un-rotated and tinted — plain draw
+                  var bDrawW = frame.cutWidth / res;
+                  var bDrawH = frame.cutHeight / res;
+                  if (camera.roundPixels) {
+                    dx = Math.floor(dx + 0.5);
+                    dy = Math.floor(dy + 0.5);
+                    bDrawW += 0.5;
+                    bDrawH += 0.5;
+                  }
+                  ctx.drawImage(baked, 0, 0, baked.width, baked.height, dx, dy, bDrawW, bDrawH);
+                } else if (storedW > 0 && storedH > 0) {
                   // Un-rotate: translate+rotate to counteract the 90deg CW storage
                   var drawW = frame.cutWidth / res;
                   var drawH = frame.cutHeight / res;
@@ -350,7 +465,7 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                 if (gameObject.mask) gameObject.mask.postRenderCanvas(renderer, gameObject, camera);
                 ctx.restore();
               };
-              console.log('Patched Canvas renderer for rotated atlas frames');
+              console.log('Patched Canvas renderer: rotated frames + tint baking');
             }
             _this.scene.start("GameScene");
           });

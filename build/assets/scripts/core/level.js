@@ -2562,7 +2562,31 @@ window.LevelObject = /*#__PURE__*/function () {
             }
           }
         };
-        if (objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
+        var _slopeDef = _SLOPE_DATA[levelObj.id];
+        if (_slopeDef) {
+          // Slope blocks: wire the (previously dead) slope scaffolding — spawn a
+          // slope collider; player.js rides getSlopeSurfaceY. Axis-aligned only:
+          // 90/270-degree wall placements fall through to no collider (like before).
+          var _rotNorm = ((levelObj.rot || 0) % 360 + 360) % 360;
+          if (_rotNorm === 0 || _rotNorm === 180) {
+            var _sw = _slopeDef.gw * a;
+            var _sh = _slopeDef.gh * a;
+            var _scol = new Collider(slopeType, worldX, worldY, _sw, _sh, 0);
+            _scol.objid = levelObj.id;
+            _scol.slopeAngleDeg = _slopeDef.angle;
+            _scol.slopeIsFilled = _slopeDef.sq;
+            _scol.slopeDir = levelObj.flipX ? -1 : 1;
+            _scol.slopeFlipY = !!levelObj.flipY;
+            if (_rotNorm === 180) {
+              _scol.slopeDir = -_scol.slopeDir;
+              _scol.slopeFlipY = !_scol.slopeFlipY;
+            }
+            registerCollider(_scol);
+            this.objects.push(_scol);
+            hasCollisionEntry = true;
+            this._addCollisionToSection(_scol);
+          }
+        } else if (objectDef.type === solidType && objectDef.gridW > 0 && objectDef.gridH > 0) {
           var w = objectDef.gridW * a;
           var h = objectDef.gridH * a;
           var collider = new Collider(solidType, worldX, worldY, w, h, levelObj.rot || 0);
@@ -2616,11 +2640,17 @@ window.LevelObject = /*#__PURE__*/function () {
           var portalColliderType = (_gravity_flip$gravity = {
             gravity_flip: "portal_gravity_down",
             gravity_normal: "portal_gravity_up",
-            gravity_toggle: "portal_gravity_toggle"
+            gravity_toggle: "portal_gravity_toggle",
+            teleport: "portal_teleport"
           }, _defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_defineProperty(_gravity_flip$gravity, flyPortal, "portal_fly"), "fly", "portal_fly"), cubePortal, "portal_cube"), "cube", "portal_cube"), "ball", "portal_ball"), "wave", portalWaveType), "ufo", portalUfoType), "spider", "portal_spider"), "mirrora", "portal_mirror_on"), "mirrorb", "portal_mirror_off"), _defineProperty(_defineProperty(_defineProperty(_defineProperty(_gravity_flip$gravity, "shrink", "portal_mini_on"), "grow", "portal_mini_off"), "dual_on", "portal_dual_on"), "dual_off", "portal_dual_off"))[portalSub] || null;
           if (portalColliderType) {
             var _collider2 = new Collider(portalColliderType, worldX, worldY, portalW, portalH, levelObj.rot || 0);
             _collider2.portalY = worldY;
+            if (levelObj.id === 747) {
+              // Teleport portal: level-string property 54 = Y offset in GD units (world = GD * 2)
+              var _r54 = levelObj._raw && levelObj._raw[54];
+              _collider2.teleportYOffset = parseFloat(_r54 !== null && _r54 !== void 0 ? _r54 : "0") * 2;
+            }
             registerCollider(_collider2);
             this.objects.push(_collider2);
             hasCollisionEntry = true;

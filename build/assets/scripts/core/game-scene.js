@@ -1337,7 +1337,60 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._bgSpeedY = 0.1;
       this._menuCameraX = -centerX;
       this._prevCameraX = -centerX;
-      this._bg = this.add.tileSprite(0, 0, screenWidth, screenHeight, "game_bg_01").setOrigin(0, 0).setScrollFactor(0).setDepth(-10);
+      // Background: NOT a TileSprite — Coherent GT cannot createPattern (polyfilled
+      // to null), which made the TileSprite render as a solid black box in TERA.
+      // Instead: a color rectangle (the bg color — fillStyle works everywhere) under
+      // a manually-wrapped grid of bg images at partial alpha (pattern overlay).
+      // The shim mimics the TileSprite API the rest of the scene uses.
+      this._bg = (function (scene) {
+        var state = { texKey: "game_bg_01", tw: 1024, th: 1024, tpx: 0, tpy: 0, w: screenWidth, h: screenHeight, flip: false, cols: 0, rows: 0 };
+        var rect = scene.add.rectangle(0, 0, state.w, state.h, 0x287dff).setOrigin(0, 0).setScrollFactor(0).setDepth(-10.5);
+        var imgs = [];
+        function rebuild() {
+          for (var i = 0; i < imgs.length; i++) imgs[i].destroy();
+          imgs = [];
+          var tex = scene.textures.get(state.texKey);
+          var src = tex && tex.source[0];
+          state.tw = src ? src.width : 1024;
+          state.th = src ? src.height : 1024;
+          state.cols = Math.ceil(state.w / state.tw) + 1;
+          state.rows = Math.ceil(state.h / state.th) + 1;
+          for (var r = 0; r < state.rows; r++) {
+            for (var c = 0; c < state.cols; c++) {
+              imgs.push(scene.add.image(0, 0, state.texKey).setOrigin(0, 0).setScrollFactor(0).setDepth(-10).setAlpha(0.4));
+            }
+          }
+          layout();
+        }
+        function layout() {
+          var ox = -(((state.tpx % state.tw) + state.tw) % state.tw);
+          var oy = -(((state.tpy % state.th) + state.th) % state.th);
+          var i = 0;
+          for (var r = 0; r < state.rows; r++) {
+            for (var c = 0; c < state.cols; c++) {
+              if (!imgs[i]) break;
+              imgs[i].x = ox + c * state.tw;
+              imgs[i].y = oy + r * state.th;
+              imgs[i].flipX = state.flip;
+              i++;
+            }
+          }
+        }
+        var shim = {};
+        shim.setOrigin = function () { return shim; };
+        shim.setScrollFactor = function () { return shim; };
+        shim.setDepth = function () { return shim; };
+        shim.setTint = function (hex) { rect.setFillStyle(hex); return shim; };
+        shim.setTexture = function (key) { if (key !== state.texKey) { state.texKey = key; rebuild(); } return shim; };
+        shim.setSize = function (w, h) { state.w = w; state.h = h; rect.setSize(w, h); rebuild(); return shim; };
+        shim.setFlipX = function (f) { state.flip = !!f; layout(); return shim; };
+        shim.setVisible = function (v) { rect.setVisible(v); for (var i = 0; i < imgs.length; i++) imgs[i].setVisible(v); return shim; };
+        shim.destroy = function () { rect.destroy(); for (var i = 0; i < imgs.length; i++) imgs[i].destroy(); imgs = []; };
+        Object.defineProperty(shim, 'tilePositionX', { get: function () { return state.tpx; }, set: function (v) { state.tpx = v; layout(); } });
+        Object.defineProperty(shim, 'tilePositionY', { get: function () { return state.tpy; }, set: function (v) { state.tpy = v; layout(); } });
+        rebuild();
+        return shim;
+      })(this);
       var _0x15d27a = this.textures.get("game_bg_01").source[0].height;
       this._bgInitY = _0x15d27a - screenHeight - o;
       this._cameraX = -centerX;
@@ -4519,11 +4572,11 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var btn = _this8.add.image(_0x599a9b + width / 2, 390, item.atlas, item.frame).setInteractive();
         if (item.action === null) {
           _this8._pausePracticeBtn = btn;
-          btn.setAngle(90).setFlipY(true);
+          // No transpose: the batchSprite patch already un-rotates rotated atlas frames
+          // (upstream's setAngle(90).setFlipY(true) double-transforms under our pipeline)
           _this8._makeBouncyButton(btn, 1, function () {
             var isPracticeMode = _this8._practicedMode.togglePracticeMode();
             btn.setTexture("GJ_GameSheet03", isPracticeMode ? "GJ_normalBtn_001.png" : "GJ_practiceBtn_001.png");
-            btn.setAngle(90).setFlipY(true);
             if (_this8._checkpointBtnContainer) _this8._checkpointBtnContainer.setVisible(isPracticeMode);
             _this8._resumeGame();
             if (!isPracticeMode) {
@@ -4549,7 +4602,9 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var barMaxW = (_0x372782 - 8) * _0x22b43a;
         var barStartX = posX - _0x372782 * _0x22b43a / 2 + 2.8;
         var fillW = initialVal * barMaxW;
-        var fillBar = _this8.add.tileSprite(barStartX, _0x1008ae, fillW > 0 ? fillW : 1, 11.2, "sliderBar").setOrigin(0, 0.5);
+        // Rectangle, not TileSprite: GT can't createPattern (TileSprites render black)
+        var fillBar = _this8.add.rectangle(barStartX, _0x1008ae, barMaxW, 11.2, 0x00aaff).setOrigin(0, 0.5);
+        fillBar.scaleX = Math.max(0.005, initialVal);
         _this8._pauseContainer.add(fillBar);
         var groove = _this8.add.image(posX, _0x1008ae, "GJ_WebSheet", "slidergroove.png").setScale(_0x22b43a).setInteractive();
         _this8._pauseContainer.add(groove);
@@ -4560,7 +4615,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var updateSlider = function(newX) {
           thumb.x = Math.max(barStartX, Math.min(barStartX + barMaxW, newX));
           var pct = (thumb.x - barStartX) / barMaxW;
-          fillBar.width = Math.max(1, pct * barMaxW);
+          fillBar.scaleX = Math.max(0.005, pct);
           setter(pct < 0.03 ? 0 : pct);
         };
         thumb.on("drag", function (p, dragX) {
@@ -7586,7 +7641,9 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var barMaxW = (_0x372782 - 8) * _0x22b43a * 1.3;
         var barStartX = containerX - barMaxW / 2 + 2.8;
         var fillW = initialVal * barMaxW;
-        var fillBar = _this23.add.tileSprite(barStartX, posY, fillW > 0 ? fillW : 1, 18, "sliderBar").setOrigin(0, 0.5);
+        // Rectangle, not TileSprite: GT can't createPattern (TileSprites render black)
+        var fillBar = _this23.add.rectangle(barStartX, posY, barMaxW, 18, 0x00aaff).setOrigin(0, 0.5);
+        fillBar.scaleX = Math.max(0.005, initialVal);
         _this23._settingsLayerInternal.add(fillBar);
         var groove = _this23.add.image(containerX, posY, "GJ_WebSheet", "slidergroove.png").setScale(_0x22b43a * 1.3).setInteractive();
         _this23._settingsLayerInternal.add(groove);
@@ -7597,7 +7654,7 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
         var updateSlider = function(newX) {
           thumb.x = Math.max(barStartX, Math.min(barStartX + barMaxW, newX));
           var pct = (thumb.x - barStartX) / barMaxW;
-          fillBar.width = Math.max(1, pct * barMaxW);
+          fillBar.scaleX = Math.max(0.005, pct);
           setter(pct < 0.03 ? 0 : pct);
         };
         thumb.on("drag", function (p, dragX) {

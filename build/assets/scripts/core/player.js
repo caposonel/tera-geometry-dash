@@ -2523,6 +2523,18 @@ var PlayerObject = /*#__PURE__*/function () {
                   _this3._playPortalShine(gameObj);
                   _this3._scene._disableDualMode();
                 }
+              } else if (_colType === "portal_teleport") {
+                if (!gameObj.activated) {
+                  gameObj.activated = true;
+                  _this3._playPortalShine(gameObj, 2);
+                  var _tpOff = gameObj.teleportYOffset || 0;
+                  // Shift lastY by the same offset so the intra-step velocity sweep
+                  // doesn't register a fake fall; refresh the loop's cached Y locals
+                  _this3.p.y += _tpOff;
+                  _this3.p.lastY += _tpOff;
+                  playersY = _this3.p.y;
+                  playersLastY = _this3.p.lastY;
+                }
               } else if (_colType === speedType) {
                 if (!gameObj.activated) {
                   gameObj.activated = true;
@@ -2962,6 +2974,33 @@ var PlayerObject = /*#__PURE__*/function () {
                 return {
                   v: void 0
                 };
+              } else if (_colType === slopeType) {
+                // Ride the slope surface (previously dead scaffolding, now wired).
+                var _surfY = gameObj.getSlopeSurfaceY(pieceWidth);
+                if (_surfY !== null) {
+                  if (!gameObj.slopeFlipY && !_this3.p.gravityFlipped) {
+                    var _feet = playersY - playerSize;
+                    // Land/ride when feet are at-or-below the surface and we're not
+                    // moving upward; the lastY sweep stops mid-air pass-throughs while
+                    // tolerating the per-substep surface rise when riding uphill.
+                    if (_feet <= _surfY + gamemodeAddition && (_this3.p.yVelocity <= 0 || _this3.p.onGround) && playersLastY - playerSize + gamemodeAddition >= _surfY - gamemodeAddition) {
+                      _this3.p.y = _surfY + playerSize;
+                      _this3.hitGround();
+                      _0x30410f = true;
+                      _this3.p.collideBottom = 0;
+                      return 0; // continue
+                    }
+                  } else if (gameObj.slopeFlipY && _this3.p.gravityFlipped) {
+                    var _head = playersY + playerSize;
+                    if (_head >= _surfY - gamemodeAddition && (_this3.p.yVelocity >= 0 || _this3.p.onGround) && playersLastY + playerSize - gamemodeAddition <= _surfY + gamemodeAddition) {
+                      _this3.p.y = _surfY - playerSize;
+                      _this3.hitGround();
+                      _0x30410f = true;
+                      _this3.p.collideTop = 0;
+                      return 0; // continue
+                    }
+                  }
+                }
               } else if (_colType === solidType) {
                 var _0x146a97 = playersY - playerSize + gamemodeAddition;
                 var _0x869e42 = playersLastY - playerSize + gamemodeAddition;
