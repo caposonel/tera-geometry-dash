@@ -302,7 +302,16 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
               var tintMode = (function () { try { return localStorage.getItem('gd_tint_mode') || 'off'; } catch (e) { return 'off'; } })();
               var useMultiply = tintMode === 'multiply' || (tintMode === 'auto' && multiplyWorks);
               var tintEnabled = tintMode !== 'off';
-              console.log('Canvas tint mode: ' + (tintEnabled ? (useMultiply ? 'multiply (pixel-verified)' : 'silhouette (Porter-Duff only)') : 'OFF'));
+              // Expose for game code: with tinting off, per-frame setTint sweeps over
+              // every level sprite (applyColorChannels) are pure waste — skip them.
+              window._gdTintEnabled = tintEnabled;
+              // Low Detail Mode: glow sprites are ADD-blend canvas draws (expensive in
+              // Coherent GT; early levels + The Nightmare create 600-2250 of them).
+              // Default ON in GT (no pixel reads = GT), OFF on desktop.
+              // Override: localStorage gd_low_detail = '1' | '0'.
+              var ldOverride = (function () { try { return localStorage.getItem('gd_low_detail'); } catch (e) { return null; } })();
+              window._gdLowDetail = ldOverride !== null ? ldOverride === '1' : !pixelReadsWork;
+              console.log('Canvas tint mode: ' + (tintEnabled ? (useMultiply ? 'multiply (pixel-verified)' : 'silhouette (Porter-Duff only)') : 'OFF') + ' | low detail: ' + (window._gdLowDetail ? 'ON' : 'off'));
               var tintCache = {};
               var tintCacheOrder = [];
               var TINT_CACHE_MAX = 512;

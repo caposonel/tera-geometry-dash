@@ -6944,7 +6944,9 @@ var GameScene = /*#__PURE__*/function (_Phaser$Scene) {
       this._level.checkPulseTriggers(playerX);
       this._level.stepPulseTriggers(deltaTime / 1000, this._colorManager);
       this._colorManager.step(deltaTime / 1000);
-      this._level.applyColorChannels(this._colorManager);
+      // With tint rendering off, setTint draws nothing in canvas — skip the
+      // every-sprite-every-frame sweep entirely (big win on dense levels)
+      if (window._gdTintEnabled) this._level.applyColorChannels(this._colorManager);
       this._bg.setTint(this._colorManager.getHex(fs));
       this._level.setGroundColor(this._colorManager.getHex(gs));
       this._level.updateVisibility(this._cameraX);
