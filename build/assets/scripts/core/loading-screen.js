@@ -296,9 +296,10 @@ var BootScene = /*#__PURE__*/function (_Phaser$Scene) {
                   return d[0] === 16 && d[1] === 32 && d[2] === 48;
                 } catch (e) { return false; }
               })();
-              // gd_tint_mode: auto | multiply | silhouette | off (set via localStorage
-              // to override, e.g. if a technique misbehaves in some environment)
-              var tintMode = (function () { try { return localStorage.getItem('gd_tint_mode') || 'auto'; } catch (e) { return 'auto'; } })();
+              // gd_tint_mode: off | auto | multiply | silhouette. DEFAULT IS OFF —
+              // the user prefers the original untinted look; the bake machinery stays
+              // available behind the localStorage switch for future experiments.
+              var tintMode = (function () { try { return localStorage.getItem('gd_tint_mode') || 'off'; } catch (e) { return 'off'; } })();
               var useMultiply = tintMode === 'multiply' || (tintMode === 'auto' && multiplyWorks);
               var tintEnabled = tintMode !== 'off';
               console.log('Canvas tint mode: ' + (tintEnabled ? (useMultiply ? 'multiply (pixel-verified)' : 'silhouette (Porter-Duff only)') : 'OFF'));

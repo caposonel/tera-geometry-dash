@@ -3,7 +3,7 @@
     "name": "geometry-dash",
     "author": "caposonel",
     "description": "Geometry Dash mini-game playable in TERA's in-game browser. Requires AutoHotkey v1 (see README). Toggle with /8 dash. Large download (music + assets), may take a while!",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "options": {
         "cliName": "geometry-dash",
         "guiName": "Geometry Dash"
