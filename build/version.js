@@ -1,1 +1,1 @@
-window._gdModVersion = "1.0.12";
+window._gdModVersion = "1.0.13";
